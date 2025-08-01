@@ -10,28 +10,33 @@ RUN apt-get update && apt-get install -y \
     nodejs \
     npm
 
-# Copy backend
+# Fix MySQL startup issues
+RUN mkdir -p /var/run/mysqld && chown mysql:mysql /var/run/mysqld
+
+# Copy backend code
 COPY backend /app/backend
 WORKDIR /app/backend
 RUN npm install
 
-# Setup MySQL
-RUN service mysql start && \
-    mysql -e "CREATE DATABASE IF NOT EXISTS bks;" && \
-    mysql -e "CREATE USER 'bks'@'localhost' IDENTIFIED BY 'Bks#13';" && \
-    mysql -e "GRANT ALL PRIVILEGES ON bks.* TO 'bks'@'localhost';" && \
-    mysql -e "FLUSH PRIVILEGES;"
+# Initialize MySQL database
+COPY init.sql /docker-entrypoint-initdb.d/init.sql
 
-# Copy frontend
+# Copy frontend files
 COPY frontend/index.html /usr/share/nginx/html/index.html
 
-# Copy nginx config
+# Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Expose ports
+# Expose backend, frontend, and MySQL ports
 EXPOSE 80 8080 3306
 
-# Start services
-CMD service mysql start && \
+# Start all services
+CMD bash -c "\
+    service mysql start && \
+    mysql -e \"
+      CREATE DATABASE IF NOT EXISTS bks;
+      CREATE USER IF NOT EXISTS 'bks'@'%' IDENTIFIED BY 'Bks#13';
+      GRANT ALL PRIVILEGES ON bks.* TO 'bks'@'%';
+      FLUSH PRIVILEGES;\" && \
     node /app/backend/index.js & \
-    nginx -g 'daemon off;'
+    nginx -g 'daemon off;'"
